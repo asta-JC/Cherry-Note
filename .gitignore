@@ -1,0 +1,15 @@
+# Local IDE, build output and machine settings
+*.iml
+.idea/
+.gradle/
+.kotlin/
+**/build/
+local.properties
+/captures/
+.externalNativeBuild/
+.cxx/
+.DS_Store
+*.apk
+*.aab
+*.jks
+*.keystore

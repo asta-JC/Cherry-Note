@@ -9,6 +9,10 @@
     <img src="https://img.shields.io/badge/built_with-Kotlin_%26_Compose-78616B?style=flat-square" alt="Built with Kotlin and Jetpack Compose" />
   </p>
   <p>
+    <a href="https://github.com/asta-JC/Cherry-Note/releases/download/v1.1/Cherry-Note_v1.1.apk"><strong>Download APK · v1.1</strong></a> ·
+    <a href="https://github.com/asta-JC/Cherry-Note/releases/tag/v1.1">Release notes</a>
+  </p>
+  <p>
     <a href="#screenshots">Screenshots</a> ·
     <a href="#features">Features</a> ·
     <a href="#getting-started">Get started</a> ·
@@ -56,6 +60,12 @@ Captured from v1.1 on a physical Samsung Galaxy S22 Ultra (SM-S908N), all in Lig
 | Deletion | Delete note permanently removes the note after confirmation |
 
 ## Getting started
+
+### Download
+
+Install [Cherry-Note_v1.1.apk](https://github.com/asta-JC/Cherry-Note/releases/download/v1.1/Cherry-Note_v1.1.apk) from [GitHub Releases](https://github.com/asta-JC/Cherry-Note/releases/tag/v1.1). The release includes [SHA256SUMS.txt](https://github.com/asta-JC/Cherry-Note/releases/download/v1.1/SHA256SUMS.txt).
+
+This APK is **debug/test-signed**, using the existing Android Debug development certificate. A separate production signing key is not configured. Version 1.1 uses Android version code 2 and package ID `com.asta.cherry_note`.
 
 ### Requirements
 

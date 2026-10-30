@@ -102,7 +102,7 @@ class CherryViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = NoteRepository(app)
     val notes = repo.notes.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val folders = repo.folders.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val appearance = repo.appearance.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Appearance())
+    val appearance = repo.appearance.map<Appearance, Appearance?> { it }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     init { viewModelScope.launch { repo.seed() } }
     fun save(note: Note, onSaved: () -> Unit = {}) { viewModelScope.launch { repo.save(note); onSaved() } }
     fun delete(note: Note) { viewModelScope.launch { repo.delete(note) } }

@@ -5,6 +5,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -20,11 +21,12 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
@@ -38,6 +40,8 @@ import com.asta.cherry_note.data.*
 import com.asta.cherry_note.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.Date
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,7 +49,15 @@ class MainActivity : ComponentActivity() {
         setContent {
             val vm: CherryViewModel = viewModel()
             val appearance by vm.appearance.collectAsStateWithLifecycle()
-            CherryNoteTheme(appearance) {
+            val resolvedAppearance = appearance ?: return@setContent
+            CherryNoteTheme(resolvedAppearance) {
+                val dark = LocalCherryDarkTheme.current
+                SideEffect {
+                    WindowCompat.getInsetsController(window, window.decorView).apply {
+                        isAppearanceLightStatusBars = !dark
+                        isAppearanceLightNavigationBars = !dark
+                    }
+                }
                 CherryApp(vm)
             }
         }
@@ -66,7 +78,8 @@ class MainActivity : ComponentActivity() {
                     // Read the controller directly so rapid taps cannot reuse a stale route.
                     if (nav.currentDestination?.route != path) {
                         nav.navigate(path) {
-                            popUpTo("home")
+                            popUpTo(nav.graph.startDestinationId) { saveState = true }
+                            restoreState = true
                             launchSingleTop = true
                         }
                     }
@@ -96,13 +109,13 @@ class MainActivity : ComponentActivity() {
     }
     ) {
         padding ->
-        NavHost(nav,"home",Modifier.padding(padding).background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primary.copy(alpha=.035f), MaterialTheme.colorScheme.background))),enterTransition= {
-            fadeIn()+slideInHorizontally {
+        NavHost(nav,"home",Modifier.padding(padding).background(MaterialTheme.colorScheme.background),enterTransition= {
+            fadeIn(tween(200))+slideInHorizontally(tween(200)) {
                 it/15
             }
         }
         ,exitTransition= {
-            fadeOut()
+            fadeOut(tween(200))
         }
         ) {
             composable("home") {
@@ -129,32 +142,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-@Composable private fun CherryArt(modifier:Modifier=Modifier) {
-    Canvas(modifier) {
-        val x=size.width/100
-        val y=size.height/100
-        drawCircle(Color(0xFFECC5CF).copy(alpha=.3f),size.minDimension*.46f,Offset(50*x,53*y))
-        val path=Path().apply {
-            moveTo(31*x,65*y)
-            cubicTo(37*x,39*y,58*x,44*y,61*x,12*y)
-            moveTo(70*x,69*y)
-            cubicTo(76*x,43*y,60*x,42*y,61*x,12*y)
-        }
-        drawPath(path,Color(0xFF74805C),style=androidx.compose.ui.graphics.drawscope.Stroke(3*x,cap=StrokeCap.Round))
-        drawOval(Color(0xFF849166),Offset(62*x,14*y),androidx.compose.ui.geometry.Size(24*x,10*y))
-        drawCircle(Brush.linearGradient(listOf(Color(0xFFE36581),Color(0xFF96183F))),19*x,Offset(31*x,70*y))
-        drawCircle(Brush.linearGradient(listOf(Color(0xFFEF8BA0),Color(0xFFA2244B))),20*x,Offset(70*x,75*y))
-        drawCircle(Color.White.copy(alpha=.4f),3*x,Offset(25*x,62*y))
-        drawCircle(Color.White.copy(alpha=.4f),3*x,Offset(64*x,66*y))
-    }
+@Composable private fun CherryArt(modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(if (LocalCherryDarkTheme.current) R.drawable.cherryapps_logo_full_dark else R.drawable.cherryapps_logo_full),
+        contentDescription = null,
+        modifier = modifier.padding(2.dp),
+        contentScale = androidx.compose.ui.layout.ContentScale.Fit
+    )
 }
 @Composable private fun Brand() {
-    Row(verticalAlignment=Alignment.CenterVertically) {
-        CherryArt(Modifier.size(34.dp))
-        Spacer(Modifier.width(6.dp))
-        Text("cherry note",fontFamily=FontFamily.Serif,fontSize=23.sp,fontWeight=FontWeight.Bold,letterSpacing=(-.7).sp)
-
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        CherryArt(Modifier.size(32.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("Cherry Note", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
+}
+@Composable private fun readingFont(vm: CherryViewModel): FontFamily {
+    val appearance by vm.appearance.collectAsStateWithLifecycle()
+    return if (appearance?.type == "Literary") FontFamily.Serif else FontFamily.SansSerif
 }
 internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.title,note.body,note.tags).any {
     it.contains(query.trim(),true)
@@ -162,9 +168,13 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
 @Composable private fun Home(notes: List<Note>, folders: List<Folder>, open: (String) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("All notes") }
-    val visible = notes.filter { (category == "All notes" || it.folder == category) && matches(it, query) }
+    val visible by produceState(emptyList<Note>(), notes, category, query) {
+        value = withContext(Dispatchers.Default) {
+            notes.filter { (category == "All notes" || it.folder == category) && matches(it, query) }
+        }
+    }
     LazyVerticalStaggeredGrid(
-        columns = StaggeredGridCells.Adaptive(155.dp),
+        columns = StaggeredGridCells.Adaptive(155.dp * LocalConfiguration.current.fontScale.coerceIn(1f, 1.6f)),
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalItemSpacing = 12.dp,
         contentPadding = PaddingValues(22.dp, 18.dp, 22.dp, 105.dp), modifier = Modifier.fillMaxSize()
     ) {
@@ -172,7 +182,7 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
             Column {
                 Brand()
                 Spacer(Modifier.height(22.dp))
-                Text("Your notes", fontFamily = FontFamily.Serif, fontSize = 32.sp)
+                Text("Your notes", fontSize = 32.sp)
                 Spacer(Modifier.height(16.dp))
                 OutlinedTextField(
                     value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
@@ -188,10 +198,13 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
                     items(listOf("All notes") + folders.map { it.name }) { name ->
                         FilterChip(
                             selected = category == name, onClick = { category = name },
+                            leadingIcon = { if (category == name) Icon(Icons.Outlined.Check, null, Modifier.size(16.dp)) },
+                            modifier = Modifier.heightIn(min = 48.dp),
                             label = { Text(name, fontSize = 12.sp) }, shape = RoundedCornerShape(12.dp),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary
                             )
                         )
                     }
@@ -221,7 +234,7 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
         Spacer(Modifier.width(7.dp))
         Text(title,fontSize=14.sp,fontWeight=FontWeight.SemiBold)
         Spacer(Modifier.weight(1f))
-        Text(count,fontSize=10.sp,color=muted())
+        Text(count,fontSize=12.sp,color=muted())
     }
 }
 @Composable private fun NoteCard(note:Note,open:(String)->Unit) {
@@ -231,26 +244,27 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
     ,color=noteColor(note.color),shape=RoundedCornerShape(19.dp),border=BorderStroke(.7.dp,MaterialTheme.colorScheme.onSurface.copy(alpha=.04f)),modifier=Modifier.fillMaxWidth().animateContentSize()) {
         Column(Modifier.padding(17.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CherryArt(Modifier.size(28.dp))
+                Icon(if (note.checklist) Icons.Outlined.Checklist else Icons.Outlined.Description, null,
+                    Modifier.size(18.dp), tint = muted())
                 Spacer(Modifier.width(6.dp))
-                Text(note.folder.uppercase(),fontSize=8.sp,letterSpacing=1.3.sp,color=muted(),modifier=Modifier.weight(1f))
+                Text(note.folder,fontSize=12.sp,color=muted(),modifier=Modifier.weight(1f))
                 if(note.pinned)Icon(Icons.Outlined.PushPin,"Pinned",Modifier.size(13.dp),tint=MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.height(13.dp))
             Text(note.title.ifBlank {
                 "Untitled thought"
             }
-            ,fontFamily=FontFamily.Serif,fontSize=21.sp,lineHeight=25.sp)
+            ,fontSize=21.sp,lineHeight=25.sp)
             Spacer(Modifier.height(10.dp))
             Text(note.body,fontSize=12.sp,lineHeight=20.sp,color=MaterialTheme.colorScheme.onSurface.copy(alpha=.77f),maxLines=7,overflow=TextOverflow.Ellipsis)
             if(note.tags.isNotBlank()) {
                 Spacer(Modifier.height(15.dp))
-                Text("#"+note.tags.split(',').first().trim().replace(" ",""),fontSize=9.sp,color=MaterialTheme.colorScheme.primary)
+                Text("#"+note.tags.split(',').first().trim().replace(" ",""),fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.height(18.dp))
             Row {
                 val currentLocale = LocalConfiguration.current.locales[0]
-                Text(remember(currentLocale) { SimpleDateFormat("MMM d", currentLocale) }.format(Date(note.updated)),fontSize=9.sp,color=muted())
+                Text(remember(currentLocale) { SimpleDateFormat("MMM d", currentLocale) }.format(Date(note.updated)),fontSize=12.sp,color=muted())
                 Spacer(Modifier.weight(1f))
             }
         }
@@ -259,13 +273,14 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
 @Composable private fun EmptyState(title:String,body:String) {
     Column(Modifier.fillMaxWidth().padding(vertical=35.dp),horizontalAlignment=Alignment.CenterHorizontally) {
         CherryArt(Modifier.size(110.dp))
-        Text(title,fontFamily=FontFamily.Serif,fontSize=25.sp)
+        Text(title,fontSize=25.sp)
         Spacer(Modifier.height(12.dp))
         Text(body,color=muted(),textAlign=androidx.compose.ui.text.style.TextAlign.Center,fontSize=14.sp)
     }
 }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun Editor(initial: Note, folders: List<Folder>, vm: CherryViewModel, back: () -> Unit) {
+    val font = readingFont(vm)
     var note by remember(initial.id) { mutableStateOf(initial) }
     var delete by remember { mutableStateOf(false) }
     var options by rememberSaveable { mutableStateOf(false) }
@@ -295,10 +310,10 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
             Spacer(Modifier.height(16.dp))
             androidx.compose.foundation.text.BasicTextField(
                 value = note.title, onValueChange = { update(note.copy(title = it)) },
-                textStyle = MaterialTheme.typography.headlineLarge.copy(color = MaterialTheme.colorScheme.onSurface, fontFamily = FontFamily.Serif),
+                textStyle = MaterialTheme.typography.headlineLarge.copy(color = MaterialTheme.colorScheme.onSurface, fontFamily = font),
                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp).semantics { contentDescription = "Note title" },
                 decorationBox = { inner ->
-                    if (note.title.isBlank()) Text("Title", fontFamily = FontFamily.Serif, fontSize = 32.sp, color = muted())
+                    if (note.title.isBlank()) Text("Title", fontSize = 32.sp, color = muted())
                     inner()
                 }
             )
@@ -320,7 +335,7 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
                                 update(note.copy(body = lines.joinToString("\n")))
                             },
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = MaterialTheme.colorScheme.onSurface, fontFamily = font,
                                 fontWeight = if (note.bold) FontWeight.Bold else FontWeight.Normal,
                                 textDecoration = if (checked) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
                             ), singleLine = true,
@@ -341,7 +356,7 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
                 androidx.compose.foundation.text.BasicTextField(
                     value = note.body, onValueChange = { update(note.copy(body = it)) },
                     textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        color = MaterialTheme.colorScheme.onSurface, lineHeight = 28.sp,
+                        color = MaterialTheme.colorScheme.onSurface, fontFamily = font, lineHeight = 28.sp,
                         fontWeight = if (note.bold) FontWeight.Bold else FontWeight.Normal
                     ),
                     modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 280.dp).semantics { contentDescription = "Note body" },
@@ -430,6 +445,7 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable private fun Collections(folders: List<Folder>, notes: List<Note>, vm: CherryViewModel, open: (String) -> Unit) {
     var adding by remember { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
@@ -453,7 +469,7 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
             }
             val collectionNotes = notes.filter { it.folder == folderName }
             LazyVerticalStaggeredGrid(
-                columns = StaggeredGridCells.Adaptive(155.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                columns = StaggeredGridCells.Adaptive(155.dp * LocalConfiguration.current.fontScale.coerceIn(1f, 1.6f)), horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalItemSpacing = 12.dp, contentPadding = PaddingValues(bottom = 24.dp)
             ) {
                 if (collectionNotes.isEmpty()) item(span = StaggeredGridItemSpan.FullLine) {
@@ -467,7 +483,7 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(22.dp)) {
         Brand()
         Spacer(Modifier.height(22.dp))
-        Text("Collections", fontFamily = FontFamily.Serif, fontSize = 32.sp)
+        Text("Collections", fontSize = 32.sp)
         Spacer(Modifier.height(16.dp))
         OutlinedButton(onClick = { adding = true }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
             Icon(Icons.Outlined.CreateNewFolder, null, Modifier.size(20.dp))
@@ -491,11 +507,11 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
     if (adding) AlertDialog(
         onDismissRequest = { adding = false }, title = { Text("New collection") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
                 Spacer(Modifier.height(16.dp))
                 Text("Icon", style = MaterialTheme.typography.labelLarge)
-                Row {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("✦", "♡", "☾", "↗").forEach { symbol ->
                         FilterChip(selected = icon == symbol, onClick = { icon = symbol }, label = { Text(symbol) }, modifier = Modifier.padding(end = 8.dp))
                     }
@@ -520,31 +536,32 @@ internal fun matches(note:Note,query:String)=query.isBlank() || listOf(note.titl
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(22.dp)) {
         Brand()
         Spacer(Modifier.height(30.dp))
-        Text("Settings",fontFamily=FontFamily.Serif,fontSize=32.sp)
+        Text("Settings",fontSize=32.sp)
         Spacer(Modifier.height(8.dp))
         Text("Choose how your notes look.",color=muted(),fontSize=14.sp)
         Spacer(Modifier.height(30.dp))
-        Preference("Appearance","Set the mood",listOf("Light","Dark","System"),appearance.theme) {
+        Preference("Appearance","Set the mood",listOf("Light","Dark","System"),appearance?.theme ?: "System") {
             vm.preference("theme",it)
         }
-        Preference("Typography","Find your voice",listOf("Modern","Literary"),appearance.type) {
+        Preference("Typography","Find your voice",listOf("Modern","Literary"),appearance?.type ?: "Modern") {
             vm.preference("type",it)
         }
         Text("Notes save automatically on this device.", color = muted(), fontSize = 13.sp)
         Spacer(Modifier.height(26.dp))
-        Text("CHERRY NOTE  /  VERSION 1.0",fontSize=9.sp,letterSpacing=2.sp,color=muted())
+        Text("CHERRY NOTE  /  VERSION 1.1",fontSize=12.sp,letterSpacing=2.sp,color=muted())
         Spacer(Modifier.height(25.dp))
     }
 }
+@OptIn(ExperimentalLayoutApi::class)
 @Composable private fun Preference(title:String,subtitle:String,options:List<String>,selected:String,onSelect:(String)->Unit) {
     Text(title,fontWeight=FontWeight.SemiBold,fontSize=17.sp)
     Text(subtitle,color=muted(),fontSize=12.sp,modifier=Modifier.padding(top=4.dp,bottom=12.dp))
-    Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+    FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
         options.forEach {
             option->FilterChip(selected=selected==option,onClick= {
                 onSelect(option)
             }
-            ,label= {
+            ,modifier = Modifier.heightIn(min = 48.dp),label= {
                 Text(option)
             }
             ,leadingIcon= {
